@@ -148,6 +148,29 @@ const ExcelComparator = () => {
     let matches = 0;
     let totalCells = 0;
 
+    // for (let i = 0; i < maxRows; i++) {
+    //   const row = [];
+    //   const row1 = data1[i] || [];
+    //   const row2 = data2[i] || [];
+
+    //   for (let j = 0; j < maxCols; j++) {
+    //     const cell1 = row1[j] ?? "";
+    //     const cell2 = row2[j] ?? "";
+    //     const isDifferent = String(cell1) !== String(cell2);
+
+    //     if (isDifferent) differences++;
+    //     else matches++;
+    //     totalCells++;
+
+    //     row.push({
+    //       value1: cell1,
+    //       value2: cell2,
+    //       isDifferent,
+    //       isEmpty: cell1 === "" && cell2 === "",
+    //     });
+    //   }
+    //   comparisonResult.push(row);
+    // }
     for (let i = 0; i < maxRows; i++) {
       const row = [];
       const row1 = data1[i] || [];
@@ -156,7 +179,10 @@ const ExcelComparator = () => {
       for (let j = 0; j < maxCols; j++) {
         const cell1 = row1[j] ?? "";
         const cell2 = row2[j] ?? "";
-        const isDifferent = String(cell1) !== String(cell2);
+
+        const trimmed1 = String(cell1).trim();
+        const trimmed2 = String(cell2).trim();
+        const isDifferent = trimmed1 !== trimmed2;
 
         if (isDifferent) differences++;
         else matches++;
@@ -166,7 +192,7 @@ const ExcelComparator = () => {
           value1: cell1,
           value2: cell2,
           isDifferent,
-          isEmpty: cell1 === "" && cell2 === "",
+          isEmpty: trimmed1 === "" && trimmed2 === "",
         });
       }
       comparisonResult.push(row);
@@ -237,7 +263,7 @@ const ExcelComparator = () => {
       }
     }
 
-        if (exportData.length === 0) {
+    if (exportData.length === 0) {
       exportData.push({
         Field: "No differences found",
         Given: "",
