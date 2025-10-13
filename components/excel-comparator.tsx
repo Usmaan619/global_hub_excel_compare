@@ -1,335 +1,316 @@
-"use client";
+"use client"
 
-import { useState, useCallback } from "react";
-import {
-  FileSpreadsheet,
-  CheckCircle,
-  Download,
-  Trash2,
-  Eye,
-} from "lucide-react";
-import * as XLSX from "xlsx";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import { useToast } from "@/components/ui/use-toast";
+import { useState, useCallback } from "react"
+import { FileSpreadsheet, CheckCircle, Download, Trash2, Eye } from "lucide-react"
+import * as XLSX from "xlsx"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
+import { useToast } from "@/components/ui/use-toast"
 
-type SheetRow = Array<string | number | boolean | null>;
+type SheetRow = Array<string | number | boolean | null>
 type ComparisonCell = {
-  value1: unknown;
-  value2: unknown;
-  isDifferent: boolean;
-  isEmpty: boolean;
-};
-type ComparisonRow = ComparisonCell[];
+  value1: unknown
+  value2: unknown
+  isDifferent: boolean
+  isEmpty: boolean
+}
+type ComparisonRow = ComparisonCell[]
 type Stats = {
-  differences: number;
-  matches: number;
-  totalCells: number;
-  accuracy: string | number;
-};
+  differences: number
+  matches: number
+  totalCells: number
+  accuracy: string | number
+}
 
 const ExcelComparator = () => {
-  const [file1, setFile1] = useState<File | null>(null);
-  const [file2, setFile2] = useState<File | null>(null);
-  const [data1, setData1] = useState<SheetRow[] | null>(null);
-  const [data2, setData2] = useState<SheetRow[] | null>(null);
-  const [comparison, setComparison] = useState<ComparisonRow[] | null>(null);
-  const [selectedSheet1, setSelectedSheet1] = useState("");
-  const [selectedSheet2, setSelectedSheet2] = useState("");
-  const [sheets1, setSheets1] = useState<string[]>([]);
-  const [sheets2, setSheets2] = useState<string[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [showDifferencesOnly, setShowDifferencesOnly] = useState(false);
-  const [comparisonStats, setComparisonStats] = useState<Stats | null>(null);
-  const [dense, setDense] = useState(false);
-  const { toast } = useToast();
+  const [file1, setFile1] = useState<File | null>(null)
+  const [file2, setFile2] = useState<File | null>(null)
+  const [data1, setData1] = useState<SheetRow[] | null>(null)
+  const [data2, setData2] = useState<SheetRow[] | null>(null)
+  const [comparison, setComparison] = useState<ComparisonRow[] | null>(null)
+  const [selectedSheet1, setSelectedSheet1] = useState("")
+  const [selectedSheet2, setSelectedSheet2] = useState("")
+  const [sheets1, setSheets1] = useState<string[]>([])
+  const [sheets2, setSheets2] = useState<string[]>([])
+  const [loading, setLoading] = useState(false)
+  const [showDifferencesOnly, setShowDifferencesOnly] = useState(false)
+  const [comparisonStats, setComparisonStats] = useState<Stats | null>(null)
+  const [dense, setDense] = useState(false)
+  const { toast } = useToast()
 
   const handleFileUpload = useCallback(
     async (file: File | undefined, fileNumber: 1 | 2) => {
-      if (!file) return;
-      setLoading(true);
+      if (!file) return
+      setLoading(true)
       try {
-        const arrayBuffer = await file.arrayBuffer();
-        const workbook = XLSX.read(arrayBuffer, { type: "array" });
-        const sheetNames = workbook.SheetNames;
+        const arrayBuffer = await file.arrayBuffer()
+        const workbook = XLSX.read(arrayBuffer, { type: "array" })
+        const sheetNames = workbook.SheetNames
 
-        const firstSheet = sheetNames[0];
+        const firstSheet = sheetNames[0]
         if (!firstSheet) {
           toast({
             title: "No sheets found",
             description: "Please upload a valid spreadsheet.",
             variant: "destructive",
-          });
-          return;
+          })
+          return
         }
 
-        const worksheet = workbook.Sheets[firstSheet];
+        const worksheet = workbook.Sheets[firstSheet]
         const jsonData = XLSX.utils.sheet_to_json(worksheet, {
           header: 1,
           defval: "",
-        }) as SheetRow[];
+        }) as SheetRow[]
 
         if (fileNumber === 1) {
-          setFile1(file);
-          setSheets1(sheetNames);
-          setSelectedSheet1(firstSheet);
-          setData1(jsonData);
+          setFile1(file)
+          setSheets1(sheetNames)
+          setSelectedSheet1(firstSheet)
+          setData1(jsonData)
         } else {
-          setFile2(file);
-          setSheets2(sheetNames);
-          setSelectedSheet2(firstSheet);
-          setData2(jsonData);
+          setFile2(file)
+          setSheets2(sheetNames)
+          setSelectedSheet2(firstSheet)
+          setData2(jsonData)
         }
       } catch (error) {
-        console.error(" Error reading file:", error);
+        console.error(" Error reading file:", error)
         toast({
           title: "File error",
           description: "Unable to read the Excel file.",
           variant: "destructive",
-        });
+        })
       } finally {
-        setLoading(false);
+        setLoading(false)
       }
     },
-    [toast]
-  );
+    [toast],
+  )
 
   const handleSheetChange = useCallback(
     async (sheetName: string, fileNumber: 1 | 2) => {
-      if (!sheetName) return;
-      setLoading(true);
+      if (!sheetName) return
+      setLoading(true)
       try {
-        const file = fileNumber === 1 ? file1 : file2;
-        if (!file) return;
-        const arrayBuffer = await file.arrayBuffer();
-        const workbook = XLSX.read(arrayBuffer, { type: "array" });
-        const worksheet = workbook.Sheets[sheetName];
+        const file = fileNumber === 1 ? file1 : file2
+        if (!file) return
+        const arrayBuffer = await file.arrayBuffer()
+        const workbook = XLSX.read(arrayBuffer, { type: "array" })
+        const worksheet = workbook.Sheets[sheetName]
         const jsonData = XLSX.utils.sheet_to_json(worksheet, {
           header: 1,
           defval: "",
-        }) as SheetRow[];
+        }) as SheetRow[]
 
         if (fileNumber === 1) {
-          setSelectedSheet1(sheetName);
-          setData1(jsonData);
+          setSelectedSheet1(sheetName)
+          setData1(jsonData)
         } else {
-          setSelectedSheet2(sheetName);
-          setData2(jsonData);
+          setSelectedSheet2(sheetName)
+          setData2(jsonData)
         }
       } catch (error) {
-        console.error(" Error reading sheet:", error);
+        console.error(" Error reading sheet:", error)
         toast({
           title: "Sheet error",
           description: "Unable to read the selected sheet.",
           variant: "destructive",
-        });
+        })
       } finally {
-        setLoading(false);
+        setLoading(false)
       }
     },
-    [file1, file2, toast]
-  );
+    [file1, file2, toast],
+  )
 
   const compareData = useCallback(() => {
-    if (!data1 || !data2) return;
-    setLoading(true);
+    if (!data1 || !data2) return
+    setLoading(true)
 
-    const maxRows = Math.max(data1.length, data2.length);
-    const maxCols = Math.max(
-      Math.max(...data1.map((row) => row.length)),
-      Math.max(...data2.map((row) => row.length))
-    );
+    const maxRows = Math.max(data1.length, data2.length)
+    const maxCols = Math.max(Math.max(...data1.map((row) => row.length)), Math.max(...data2.map((row) => row.length)))
 
-    const comparisonResult = [];
-    let differences = 0;
-    let matches = 0;
-    let totalCells = 0;
+    const comparisonResult = []
+    let differences = 0
+    let matches = 0
+    let totalCells = 0
 
-    // for (let i = 0; i < maxRows; i++) {
-    //   const row = [];
-    //   const row1 = data1[i] || [];
-    //   const row2 = data2[i] || [];
-
-    //   for (let j = 0; j < maxCols; j++) {
-    //     const cell1 = row1[j] ?? "";
-    //     const cell2 = row2[j] ?? "";
-    //     const isDifferent = String(cell1) !== String(cell2);
-
-    //     if (isDifferent) differences++;
-    //     else matches++;
-    //     totalCells++;
-
-    //     row.push({
-    //       value1: cell1,
-    //       value2: cell2,
-    //       isDifferent,
-    //       isEmpty: cell1 === "" && cell2 === "",
-    //     });
-    //   }
-    //   comparisonResult.push(row);
-    // }
     for (let i = 0; i < maxRows; i++) {
-      const row = [];
-      const row1 = data1[i] || [];
-      const row2 = data2[i] || [];
+      const row = []
+      const row1 = data1[i] || []
+      const row2 = data2[i] || []
 
       for (let j = 0; j < maxCols; j++) {
-        const cell1 = row1[j] ?? "";
-        const cell2 = row2[j] ?? "";
+        const cell1 = row1[j] ?? ""
+        const cell2 = row2[j] ?? ""
 
-        const trimmed1 = String(cell1).trim();
-        const trimmed2 = String(cell2).trim();
-        const isDifferent = trimmed1 !== trimmed2;
+        const trimmed1 = String(cell1).trim()
+        const trimmed2 = String(cell2).trim()
+        const isDifferent = trimmed1 !== trimmed2
 
-        if (isDifferent) differences++;
-        else matches++;
-        totalCells++;
+        if (isDifferent) differences++
+        else matches++
+        totalCells++
 
         row.push({
           value1: cell1,
           value2: cell2,
           isDifferent,
           isEmpty: trimmed1 === "" && trimmed2 === "",
-        });
+        })
       }
-      comparisonResult.push(row);
+      comparisonResult.push(row)
     }
 
-    setComparison(comparisonResult);
+    setComparison(comparisonResult)
     setComparisonStats({
       differences,
       matches,
       totalCells,
       accuracy: totalCells > 0 ? ((matches / totalCells) * 100).toFixed(2) : 0,
-    });
-    setLoading(false);
-  }, [data1, data2]);
+    })
+    setLoading(false)
+  }, [data1, data2])
 
   const exportComparison = () => {
-    if (!comparison || comparison.length === 0) return;
+    if (!comparison || comparison.length === 0) return
 
-    const firstRow = comparison[0];
-    const hasHeaders = firstRow?.every(
-      (cell) => cell.value1 === cell.value2 && !cell.isDifferent
-    );
+    const firstRow = comparison[0]
+    const hasHeaders = firstRow?.every((cell) => cell.value1 === cell.value2 && !cell.isDifferent)
 
-    const headers: string[] = [];
+    const headers: string[] = []
     if (hasHeaders && firstRow) {
       firstRow.forEach((cell, colIndex) => {
-        const headerValue = String(cell.value1 ?? "").trim();
-        headers[colIndex] = headerValue || XLSX.utils.encode_col(colIndex);
-      });
+        const headerValue = String(cell.value1 ?? "").trim()
+        headers[colIndex] = headerValue || XLSX.utils.encode_col(colIndex)
+      })
     }
 
-    const exportData: Array<{ Field: string; Given: string; Entered: string }> =
-      [];
+    const exportData: Array<{
+      "Record no.": string
+      Field: string
+      Given: string
+      Entered: string
+    }> = []
 
-    const startRow = hasHeaders ? 1 : 0;
+    const startRow = hasHeaders ? 1 : 0
 
     for (let rowIndex = startRow; rowIndex < comparison.length; rowIndex++) {
-      const row = comparison[rowIndex];
-      if (!row) continue;
+      const row = comparison[rowIndex]
+      if (!row) continue
 
-      // Check if this row has any differences
-      const hasDifferences = row.some(
-        (cell) => cell.isDifferent && !cell.isEmpty
-      );
+      const hasDifferences = row.some((cell) => cell.isDifferent && !cell.isEmpty)
 
       if (hasDifferences) {
+        const recordNo = String(comparison[rowIndex][0]?.value1 ?? "").trim() || ""
+
+        let recordNoAdded = false
+
         row.forEach((cell, colIndex) => {
           if (cell.isDifferent && !cell.isEmpty) {
-            let fieldName: string;
+            let fieldName: string
 
             if (hasHeaders && headers[colIndex]) {
-              fieldName = headers[colIndex];
+              fieldName = headers[colIndex]
             } else {
-              const colLetter = XLSX.utils.encode_col(colIndex);
-              fieldName = `Column ${colLetter}`;
+              const colLetter = XLSX.utils.encode_col(colIndex)
+              fieldName = `Column ${colLetter}`
             }
 
             exportData.push({
+              "Record no.": recordNoAdded ? "" : recordNo,
               Field: fieldName,
               Given: String(cell.value1 ?? "").trim(),
               Entered: String(cell.value2 ?? "").trim(),
-            });
-          }
-        });
+            })
 
-        // Add a blank row after each compared row for spacing
-        exportData.push({ Field: "", Given: "", Entered: "" });
+            recordNoAdded = true
+          }
+        })
+
+        // Add a blank row after each record
+        exportData.push({
+          "Record no.": "",
+          Field: "",
+          Given: "",
+          Entered: "",
+        })
       }
     }
 
     if (exportData.length === 0) {
       exportData.push({
+        "Record no.": "",
         Field: "No differences found",
         Given: "",
         Entered: "",
-      });
+      })
     } else if (comparisonStats) {
-      exportData.push({ Field: "", Given: "", Entered: "" }); // spacing
+      exportData.push({ "Record no.": "", Field: "", Given: "", Entered: "" }) // spacing
       exportData.push({
+        "Record no.": "",
         Field: `You got ${comparisonStats.matches} out of ${comparisonStats.totalCells} correct.`,
         Given: `Accuracy: ${comparisonStats.accuracy}%`,
         Entered: "",
-      });
+      })
     }
 
-    const ws = XLSX.utils.json_to_sheet(exportData);
+    const ws = XLSX.utils.json_to_sheet(exportData)
 
     const colWidths = [
-      { wch: Math.max(20, ...exportData.map((r) => r.Field.length)) },
-      { wch: Math.max(15, ...exportData.map((r) => r.Given.length)) },
-      { wch: Math.max(15, ...exportData.map((r) => r.Entered.length)) },
-    ];
-    ws["!cols"] = colWidths;
+      { wch: Math.max(20, ...exportData.map((r) => r["Record no."].length)) }, // was 12
+      { wch: Math.max(30, ...exportData.map((r) => r.Field.length)) }, // was 20
+      { wch: Math.max(40, ...exportData.map((r) => r.Given.length)) }, // was 15
+      { wch: Math.max(40, ...exportData.map((r) => r.Entered.length)) }, // was 15
+    ]
 
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Comparison");
+    ws["!cols"] = colWidths
+
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, "Comparison")
 
     try {
-      const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+      const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" })
       const blob = new Blob([wbout], {
         type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "excel_comparison_result.xlsx";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+      })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = "excel_comparison_result.xlsx"
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
     } catch (err) {
-      console.error("Export error:", err);
+      console.error("Export error:", err)
     }
-  };
+  }
 
   const clearAll = () => {
-    setFile1(null);
-    setFile2(null);
-    setData1(null);
-    setData2(null);
-    setComparison(null);
-    setSelectedSheet1("");
-    setSelectedSheet2("");
-    setSheets1([]);
-    setSheets2([]);
-    setComparisonStats(null);
-    setShowDifferencesOnly(false);
-    setDense(false);
-  };
+    setFile1(null)
+    setFile2(null)
+    setData1(null)
+    setData2(null)
+    setComparison(null)
+    setSelectedSheet1("")
+    setSelectedSheet2("")
+    setSheets1([])
+    setSheets2([])
+    setComparisonStats(null)
+    setShowDifferencesOnly(false)
+    setDense(false)
+  }
 
   const getVisibleRows = () => {
-    if (!comparison) return [];
-    if (!showDifferencesOnly) return comparison;
-    return comparison.filter((row) =>
-      row.some((cell) => cell.isDifferent && !cell.isEmpty)
-    );
-  };
+    if (!comparison) return []
+    if (!showDifferencesOnly) return comparison
+    return comparison.filter((row) => row.some((cell) => cell.isDifferent && !cell.isEmpty))
+  }
 
   const FileUploadCard = ({
     fileNumber,
@@ -339,30 +320,27 @@ const ExcelComparator = () => {
     onFileUpload,
     onSheetChange,
   }: {
-    fileNumber: 1 | 2;
-    file: File | null;
-    sheets: string[];
-    selectedSheet: string;
-    onFileUpload: (file: File | undefined, fileNumber: 1 | 2) => void;
-    onSheetChange: (sheet: string, fileNumber: 1 | 2) => void;
+    fileNumber: 1 | 2
+    file: File | null
+    sheets: string[]
+    selectedSheet: string
+    onFileUpload: (file: File | undefined, fileNumber: 1 | 2) => void
+    onSheetChange: (sheet: string, fileNumber: 1 | 2) => void
   }) => {
-    const [dragOver, setDragOver] = useState(false);
+    const [dragOver, setDragOver] = useState(false)
     return (
       <Card
-        className={[
-          "border border-border transition-colors",
-          dragOver ? "ring-2 ring-primary" : "",
-        ].join(" ")}
+        className={["border border-border transition-colors", dragOver ? "ring-2 ring-primary" : ""].join(" ")}
         onDragOver={(e) => {
-          e.preventDefault();
-          setDragOver(true);
+          e.preventDefault()
+          setDragOver(true)
         }}
         onDragLeave={() => setDragOver(false)}
         onDrop={(e) => {
-          e.preventDefault();
-          setDragOver(false);
-          const dropped = e.dataTransfer?.files?.[0];
-          if (dropped) onFileUpload(dropped, fileNumber);
+          e.preventDefault()
+          setDragOver(false)
+          const dropped = e.dataTransfer?.files?.[0]
+          if (dropped) onFileUpload(dropped, fileNumber)
         }}
       >
         <CardHeader>
@@ -392,9 +370,7 @@ const ExcelComparator = () => {
                 accept=".xlsx,.xls,.csv"
                 onChange={(e) => onFileUpload(e.target.files?.[0], fileNumber)}
               />
-              <p className="text-xs text-muted-foreground">
-                Accepted: .xlsx, .xls, .csv
-              </p>
+              <p className="text-xs text-muted-foreground">Accepted: .xlsx, .xls, .csv</p>
             </div>
           ) : (
             <div className="space-y-4">
@@ -424,11 +400,19 @@ const ExcelComparator = () => {
           )}
         </CardContent>
       </Card>
-    );
-  };
+    )
+  }
 
   return (
     <div className="space-y-6">
+      {/* Lightweight branded header section */}
+      <header className="rounded-lg border border-border bg-card p-4">
+        <h2 className="text-lg font-semibold text-foreground text-balance">Excel Comparator</h2>
+        <p className="text-sm text-muted-foreground">
+          Upload two spreadsheets, compare cell-by-cell, filter differences, and export a report.
+        </p>
+      </header>
+
       {/* Upload Section */}
       <div className="grid gap-6 md:grid-cols-2">
         <FileUploadCard
@@ -452,7 +436,7 @@ const ExcelComparator = () => {
       {/* Actions */}
       {file1 && file2 && (
         <div className="flex flex-wrap items-center justify-center gap-3">
-          <Button onClick={compareData} disabled={loading}>
+          <Button onClick={compareData} disabled={loading} aria-busy={loading} aria-live="polite">
             {loading ? "Comparing…" : "Compare Files"}
           </Button>
           <Button variant="secondary" onClick={clearAll}>
@@ -471,27 +455,19 @@ const ExcelComparator = () => {
           <CardContent>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="rounded-md border border-border p-4 text-center">
-                <div className="text-xl font-semibold text-foreground">
-                  {comparisonStats.matches}
-                </div>
+                <div className="text-xl font-semibold text-foreground">{comparisonStats.matches}</div>
                 <div className="text-xs text-muted-foreground">Matches</div>
               </div>
               <div className="rounded-md border border-border p-4 text-center">
-                <div className="text-xl font-semibold text-destructive">
-                  {comparisonStats.differences}
-                </div>
+                <div className="text-xl font-semibold text-destructive">{comparisonStats.differences}</div>
                 <div className="text-xs text-muted-foreground">Differences</div>
               </div>
               <div className="rounded-md border border-border p-4 text-center">
-                <div className="text-xl font-semibold text-primary">
-                  {comparisonStats.totalCells}
-                </div>
+                <div className="text-xl font-semibold text-primary">{comparisonStats.totalCells}</div>
                 <div className="text-xs text-muted-foreground">Total Cells</div>
               </div>
               <div className="rounded-md border border-border p-4 text-center">
-                <div className="text-xl font-semibold">
-                  {comparisonStats.accuracy}%
-                </div>
+                <div className="text-xl font-semibold">{comparisonStats.accuracy}%</div>
                 <div className="text-xs text-muted-foreground">Accuracy</div>
               </div>
             </div>
@@ -502,20 +478,12 @@ const ExcelComparator = () => {
                   <Switch
                     id="differences-only"
                     checked={showDifferencesOnly}
-                    onCheckedChange={(val) =>
-                      setShowDifferencesOnly(Boolean(val))
-                    }
+                    onCheckedChange={(val) => setShowDifferencesOnly(Boolean(val))}
                   />
-                  <Label htmlFor="differences-only">
-                    Show only differences
-                  </Label>
+                  <Label htmlFor="differences-only">Show only differences</Label>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Switch
-                    id="dense"
-                    checked={dense}
-                    onCheckedChange={(v) => setDense(Boolean(v))}
-                  />
+                  <Switch id="dense" checked={dense} onCheckedChange={(v) => setDense(Boolean(v))} />
                   <Label htmlFor="dense">Compact rows</Label>
                 </div>
               </div>
@@ -543,12 +511,8 @@ const ExcelComparator = () => {
         <Card className="overflow-hidden">
           {/* Stronger section header separation */}
           <div className="px-4 py-3 border-b border-border">
-            <h3 className="text-sm font-medium text-foreground">
-              Comparison View
-            </h3>
-            <p className="text-xs text-muted-foreground">
-              Cells with differences are highlighted.
-            </p>
+            <h3 className="text-sm font-medium text-foreground">Comparison View</h3>
+            <p className="text-xs text-muted-foreground">Cells with differences are highlighted.</p>
           </div>
           <div className="overflow-auto max-h-[28rem]">
             <table className="w-full">
@@ -575,15 +539,10 @@ const ExcelComparator = () => {
               <tbody>
                 {getVisibleRows().map((row, rowIndex) => {
                   const actualRowIndex = showDifferencesOnly
-                    ? (comparison as ComparisonRow[]).findIndex(
-                        (r) => r === row
-                      )
-                    : rowIndex;
+                    ? (comparison as ComparisonRow[]).findIndex((r) => r === row)
+                    : rowIndex
                   return (
-                    <tr
-                      key={actualRowIndex}
-                      className="odd:bg-muted/10 hover:bg-muted/40 transition-colors"
-                    >
+                    <tr key={actualRowIndex} className="odd:bg-muted/10 hover:bg-muted/40 transition-colors">
                       <td
                         className={[
                           dense ? "px-2 py-1 text-xs" : "px-3 py-2 text-sm",
@@ -593,7 +552,7 @@ const ExcelComparator = () => {
                         {actualRowIndex + 1}
                       </td>
                       {row.map((cell, colIndex) => {
-                        const different = cell.isDifferent && !cell.isEmpty;
+                        const different = cell.isDifferent && !cell.isEmpty
                         return (
                           <td
                             key={colIndex}
@@ -601,14 +560,12 @@ const ExcelComparator = () => {
                               dense ? "px-2 py-1 text-xs" : "px-3 py-2 text-sm",
                               "align-top border border-border",
                               different
-                                ? "bg-destructive/10 text-foreground"
+                                ? "bg-destructive/10 text-foreground border-l-2 border-destructive"
                                 : "text-foreground",
                             ].join(" ")}
                           >
                             <div className="space-y-1">
-                              <div className="font-medium break-words">
-                                {String(cell.value1 ?? "")}
-                              </div>
+                              <div className="font-medium break-words">{String(cell.value1 ?? "")}</div>
                               {different && (
                                 <div className="text-xs text-muted-foreground border-t border-border pt-1 break-words">
                                   {String(cell.value2 ?? "")}
@@ -616,10 +573,10 @@ const ExcelComparator = () => {
                               )}
                             </div>
                           </td>
-                        );
+                        )
                       })}
                     </tr>
-                  );
+                  )
                 })}
               </tbody>
             </table>
@@ -648,7 +605,7 @@ const ExcelComparator = () => {
         </Card>
       )}
     </div>
-  );
-};
+  )
+}
 
-export default ExcelComparator;
+export default ExcelComparator
