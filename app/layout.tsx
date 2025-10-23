@@ -29,8 +29,8 @@ export const metadata: Metadata = {
   publisher: "Usman Hasan",
   robots: "index, follow", // SEO: allow indexing
   applicationName: "Excel Compare Tool",
-  viewport: "width=device-width, initial-scale=1", // For responsive design
-  themeColor: "#ffffff", // Useful for mobile browsers
+  // viewport: "width=device-width, initial-scale=1", // For responsive design
+  // themeColor: "#ffffff", // Useful for mobile browsers
   category: "Utilities",
   icons: {
     icon: "/favicon.svg", // Path to your favicon

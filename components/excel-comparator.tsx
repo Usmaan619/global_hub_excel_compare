@@ -14,6 +14,7 @@ import {
   XCircle,
 } from "lucide-react";
 import * as XLSX from "xlsx-js-style";
+import ExcelJS from "exceljs";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -65,6 +66,12 @@ type UnmatchedRow = {
   keyValue: string;
 };
 
+// Advanced diff segment types for LCS algorithm
+interface DiffSegment {
+  text: string;
+  type: "equal" | "delete" | "insert";
+}
+
 const MAX_FILE_SIZE = 50 * 1024 * 1024;
 const CHUNK_SIZE = 100;
 
@@ -115,6 +122,131 @@ const ExcelComparator = () => {
   const { toast } = useToast();
   const abortControllerRef = useRef<AbortController | null>(null);
 
+  // LCS Algorithm for character-level diff
+  const computeLCS = (str1: string, str2: string): number[][] => {
+    const m = str1.length;
+    const n = str2.length;
+    const dp: number[][] = Array(m + 1)
+      .fill(null)
+      .map(() => Array(n + 1).fill(0));
+
+    for (let i = 1; i <= m; i++) {
+      for (let j = 1; j <= n; j++) {
+        if (str1[i - 1] === str2[j - 1]) {
+          dp[i][j] = dp[i - 1][j - 1] + 1;
+        } else {
+          dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+        }
+      }
+    }
+
+    return dp;
+  };
+
+  const getDiffSegments = (
+    str1: string,
+    str2: string
+  ): {
+    segments1: DiffSegment[];
+    segments2: DiffSegment[];
+  } => {
+    const dp = computeLCS(str1, str2);
+    const segments1: DiffSegment[] = [];
+    const segments2: DiffSegment[] = [];
+
+    let i = str1.length;
+    let j = str2.length;
+
+    const ops: Array<{
+      type: string;
+      i: number;
+      j: number;
+      char1?: string;
+      char2?: string;
+    }> = [];
+
+    while (i > 0 || j > 0) {
+      if (i > 0 && j > 0 && str1[i - 1] === str2[j - 1]) {
+        ops.push({ type: "equal", i: i - 1, j: j - 1, char1: str1[i - 1] });
+        i--;
+        j--;
+      } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+        ops.push({ type: "insert", i: i - 1, j: j - 1, char2: str2[j - 1] });
+        j--;
+      } else if (i > 0) {
+        ops.push({ type: "delete", i: i - 1, j: j - 1, char1: str1[i - 1] });
+        i--;
+      }
+    }
+
+    ops.reverse();
+
+    let currentSegment1: DiffSegment | null = null;
+    let currentSegment2: DiffSegment | null = null;
+
+    ops.forEach((op) => {
+      if (op.type === "equal") {
+        if (currentSegment1 && currentSegment1.type === "equal") {
+          currentSegment1.text += op.char1;
+        } else {
+          if (currentSegment1) segments1.push(currentSegment1);
+          currentSegment1 = { text: op.char1 || "", type: "equal" };
+        }
+
+        if (currentSegment2 && currentSegment2.type === "equal") {
+          currentSegment2.text += op.char1;
+        } else {
+          if (currentSegment2) segments2.push(currentSegment2);
+          currentSegment2 = { text: op.char1 || "", type: "equal" };
+        }
+      } else if (op.type === "delete") {
+        if (currentSegment1) segments1.push(currentSegment1);
+        segments1.push({ text: op.char1 || "", type: "delete" });
+        currentSegment1 = null;
+      } else if (op.type === "insert") {
+        if (currentSegment2) segments2.push(currentSegment2);
+        segments2.push({ text: op.char2 || "", type: "insert" });
+        currentSegment2 = null;
+      }
+    });
+
+    if (currentSegment1) segments1.push(currentSegment1);
+    if (currentSegment2) segments2.push(currentSegment2);
+
+    return { segments1, segments2 };
+  };
+
+  const createRichTextFromSegments = (
+    segments: DiffSegment[],
+    isCorrectValue: boolean
+  ): any[] => {
+    return segments.map((segment) => {
+      if (segment.type === "equal") {
+        return {
+          text: segment.text,
+          font: { color: { argb: "FF000000" } },
+        };
+      } else if (segment.type === "delete") {
+        return {
+          text: segment.text,
+          font: {
+            color: { argb: "FF0000FF" }, // Blue for deleted (correct but missing)
+            bold: true,
+          },
+        };
+      } else if (segment.type === "insert") {
+        return {
+          text: segment.text,
+          font: {
+            color: { argb: "FFFF0000" }, // Red for inserted (wrong/extra)
+            bold: true,
+          },
+        };
+      }
+      return { text: segment.text };
+    });
+  };
+
   const normalizeValue = (val: CellValue): string => {
     if (val === null || val === undefined || val === "") return "";
 
@@ -156,7 +288,6 @@ const ExcelComparator = () => {
     return String(val).trim();
   };
 
-  // Character-level diff highlighting
   const getCharacterDiff = (
     str1: string,
     str2: string
@@ -466,6 +597,8 @@ const ExcelComparator = () => {
     fuzzyThreshold,
     calculateStringSimilarity,
     calculateRowSimilarity,
+    getDisplayValue,
+    areNumbersEqual,
   ]);
 
   const findCommonRows = useCallback(() => {
@@ -804,12 +937,12 @@ const ExcelComparator = () => {
               }
 
               if (isRowDifferent) {
-                differences++; // difference = 1 row with mismatch
+                differences++;
               } else {
-                matches++; // match = 1 row with no diffs
+                matches++;
               }
 
-              totalCells++; // totalCells now means "rows" not "cells"
+              totalCells++;
               comparisonResult.push(row);
             }
 
@@ -843,7 +976,7 @@ const ExcelComparator = () => {
         processChunk();
       });
     },
-    [normalizeValue, areNumbersEqual]
+    [normalizeValue, areNumbersEqual, getDisplayValue]
   );
 
   const compareData = useCallback(async () => {
@@ -934,7 +1067,442 @@ const ExcelComparator = () => {
     toast,
   ]);
 
-  const exportComparison = useCallback(() => {
+  // PRODUCTION-READY EXPORT WITH LCS CHARACTER-LEVEL HIGHLIGHTING
+  // const exportComparison = useCallback(async () => {
+  //   if (!comparison || !data1) return;
+
+  //   const isHeaderRow = (row: SheetRow): boolean => {
+  //     if (!row || row.length === 0) return false;
+  //     const nonEmptyCount = row.filter(
+  //       (cell) => typeof cell === "string" && String(cell).trim().length > 0
+  //     ).length;
+  //     const threshold = Math.ceil(row.length * 0.6);
+  //     return nonEmptyCount >= threshold;
+  //   };
+
+  //   const normalizeHeader = (val: CellValue): string => {
+  //     return String(val || "")
+  //       .trim()
+  //       .replace(/\s+/g, " ");
+  //   };
+
+  //   try {
+  //     const workbook = new ExcelJS.Workbook();
+  //     const worksheet = workbook.addWorksheet("Comparison");
+
+  //     // Add headers
+  //     const headerRow = worksheet.addRow([
+  //       "Record",
+  //       "Field",
+  //       "Entered (Incorrect)",
+  //       "Given (Correct)",
+  //     ]);
+
+  //     // Style header row
+  //     headerRow.eachCell((cell: any) => {
+  //       cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+  //       cell.fill = {
+  //         type: "pattern",
+  //         pattern: "solid",
+  //         fgColor: { argb: "FF4472C4" },
+  //       };
+  //       cell.alignment = { horizontal: "center", vertical: "middle" };
+  //     });
+
+  //     // Set column widths
+  //     worksheet.getColumn(1).width = 18;
+  //     worksheet.getColumn(2).width = 30;
+  //     worksheet.getColumn(3).width = 45;
+  //     worksheet.getColumn(4).width = 45;
+
+  //     const firstDataRow = data1[0] || [];
+  //     const hasHeaders = isHeaderRow(firstDataRow);
+  //     const headers: string[] = [];
+
+  //     if (hasHeaders) {
+  //       firstDataRow.forEach((cell, idx) => {
+  //         headers[idx] = normalizeHeader(cell) || `Col ${idx}`;
+  //       });
+  //     }
+
+  //     let totalDifferences = 0;
+
+  //     // Process comparison data with LCS algorithm
+  //     for (let rowIndex = 0; rowIndex < comparison.length; rowIndex++) {
+  //       const row = comparison[rowIndex];
+
+  //       let recordNo = "";
+  //       for (let i = 0; i < Math.min(3, row.length); i++) {
+  //         const val = row[i]?.v1 || "";
+  //         if (val) {
+  //           recordNo = val;
+  //           break;
+  //         }
+  //       }
+
+  //       const rowDiffs: Array<{ field: string; v1: string; v2: string }> = [];
+
+  //       row.forEach((cell, colIndex) => {
+  //         if (cell.diff) {
+  //           const fieldName =
+  //             hasHeaders && headers[colIndex]
+  //               ? headers[colIndex]
+  //               : `Col ${colIndex}`;
+
+  //           const v1 = String(cell.v1 || "");
+  //           const v2 = String(cell.v2 || "");
+
+  //           rowDiffs.push({ field: fieldName, v1, v2 });
+  //         }
+  //       });
+
+  //       if (rowDiffs.length > 0) {
+  //         rowDiffs.forEach((diff, idx) => {
+  //           totalDifferences++;
+
+  //           // Compute diff segments using LCS algorithm
+  //           const { segments1, segments2 } = getDiffSegments(diff.v1, diff.v2);
+
+  //           // Add row to worksheet
+  //           const excelRow = worksheet.addRow([
+  //             idx === 0 ? recordNo : "",
+  //             diff.field,
+  //             "", // Entered (will be set as rich text)
+  //             "", // Given (will be set as rich text)
+  //           ]);
+
+  //           // Set rich text for "Entered" column (File 2 - incorrect value)
+  //           const enteredCell = excelRow.getCell(3);
+  //           enteredCell.value = {
+  //             richText: createRichTextFromSegments(segments2, false),
+  //           };
+  //           enteredCell.alignment = { wrapText: true, vertical: "top" };
+
+  //           // Set rich text for "Given" column (File 1 - correct value)
+  //           const givenCell = excelRow.getCell(4);
+  //           givenCell.value = {
+  //             richText: createRichTextFromSegments(segments1, true),
+  //           };
+  //           givenCell.alignment = { wrapText: true, vertical: "top" };
+  //         });
+
+  //         // Add empty row for spacing
+  //         worksheet.addRow(["", "", "", ""]);
+  //       }
+  //     }
+
+  //     // Add summary
+  //     if (totalDifferences === 0) {
+  //       worksheet.addRow(["", "✓ No differences - Files match!", "", ""]);
+  //     } else if (comparisonStats) {
+  //       worksheet.addRow(["", "", "", ""]);
+  //       const summaryRow1 = worksheet.addRow([
+  //         "SUMMARY",
+  //         `Total Cells: ${comparisonStats.totalCells}`,
+  //         `Differences: ${comparisonStats.differences}`,
+  //         `Matches: ${comparisonStats.matches}`,
+  //       ]);
+  //       summaryRow1.font = { bold: true };
+
+  //       const summaryRow2 = worksheet.addRow([
+  //         "",
+  //         `Accuracy: ${comparisonStats.accuracy}%`,
+  //         "",
+  //         "",
+  //       ]);
+  //       summaryRow2.font = { bold: true };
+
+  //       if (
+  //         (matchingMode === "key" || matchingMode === "fuzzy") &&
+  //         (unmatchedFile1Rows.length > 0 || unmatchedFile2Rows.length > 0)
+  //       ) {
+  //         worksheet.addRow([
+  //           "",
+  //           `Unmatched in File1: ${unmatchedFile1Rows.length}`,
+  //           "",
+  //           `Unmatched in File2: ${unmatchedFile2Rows.length}`,
+  //         ]);
+  //       }
+  //     }
+
+  //     // Export file
+  //     const date = new Date().toISOString().slice(0, 10);
+  //     const buffer = await workbook.xlsx.writeBuffer();
+  //     const blob = new Blob([buffer], {
+  //       type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  //     });
+
+  //     const link = document.createElement("a");
+  //     link.href = URL.createObjectURL(blob);
+  //     link.download = `comparison_${date}.xlsx`;
+  //     link.click();
+
+  //     toast({
+  //       title: "Export successful",
+  //       description: `Report saved with ${totalDifferences} character-level differences highlighted (Red=Wrong, Blue=Correct)`,
+  //     });
+  //   } catch (error) {
+  //     console.error(error);
+  //     toast({
+  //       title: "Export failed",
+  //       description: "Could not export results",
+  //       variant: "destructive",
+  //     });
+  //   }
+  // }, [
+  //   comparison,
+  //   data1,
+  //   comparisonStats,
+  //   matchedRows,
+  //   matchingMode,
+  //   unmatchedFile1Rows,
+  //   unmatchedFile2Rows,
+  //   toast,
+  //   getDiffSegments,
+  //   createRichTextFromSegments,
+  // ]);
+
+  // PRODUCTION-READY EXPORT WITH LCS CHARACTER-LEVEL HIGHLIGHTING + COLOR LEGEND
+  // const exportComparison = useCallback(async () => {
+  //   if (!comparison || !data1) return;
+
+  //   const isHeaderRow = (row: SheetRow): boolean => {
+  //     if (!row || row.length === 0) return false;
+  //     const nonEmptyCount = row.filter(
+  //       (cell) => typeof cell === "string" && String(cell).trim().length > 0
+  //     ).length;
+  //     const threshold = Math.ceil(row.length * 0.6);
+  //     return nonEmptyCount >= threshold;
+  //   };
+
+  //   const normalizeHeader = (val: CellValue): string => {
+  //     return String(val || "")
+  //       .trim()
+  //       .replace(/\s+/g, " ");
+  //   };
+
+  //   try {
+  //     const workbook = new ExcelJS.Workbook();
+  //     const worksheet = workbook.addWorksheet("Comparison");
+
+  //     // ========== ADD COLOR LEGEND AT THE TOP ==========
+  //     const titleRow = worksheet.addRow([
+  //       "Instructions And Color for Comparison",
+  //     ]);
+  //     titleRow.font = { bold: true, size: 14 };
+  //     titleRow.getCell(1).fill = {
+  //       type: "pattern",
+  //       pattern: "solid",
+  //       fgColor: { argb: "FFE7E6E6" },
+  //     };
+  //     worksheet.addRow([""]);
+
+  //     // RED legend
+  //     const redLegendRow = worksheet.addRow([
+  //       "",
+  //       "RED = Wrong/extra characters in incorrect file",
+  //     ]);
+  //     const redCell = redLegendRow.getCell(1);
+  //     redCell.value = "■";
+  //     redCell.font = { color: { argb: "FFFF0000" }, size: 16, bold: true };
+  //     redLegendRow.getCell(2).font = { size: 11 };
+
+  //     // BLUE legend
+  //     const blueLegendRow = worksheet.addRow([
+  //       "",
+  //       "BLUE = Correct characters (missing in incorrect file)",
+  //     ]);
+  //     const blueCell = blueLegendRow.getCell(1);
+  //     blueCell.value = "■";
+  //     blueCell.font = { color: { argb: "FF0000FF" }, size: 16, bold: true };
+  //     blueLegendRow.getCell(2).font = { size: 11 };
+
+  //     // BLACK legend
+  //     const blackLegendRow = worksheet.addRow([
+  //       "",
+  //       "BLACK = Matching characters",
+  //     ]);
+  //     const blackCell = blackLegendRow.getCell(1);
+  //     blackCell.value = "■";
+  //     blackCell.font = { color: { argb: "FF000000" }, size: 16, bold: true };
+  //     blackLegendRow.getCell(2).font = { size: 11 };
+
+  //     worksheet.addRow([""]);
+  //     worksheet.addRow([""]);
+
+  //     // ========== ADD MAIN HEADERS ==========
+  //     const headerRow = worksheet.addRow([
+  //       "Record",
+  //       "Field",
+  //       "Entered (Incorrect)",
+  //       "Given (Correct)",
+  //     ]);
+
+  //     // Style header row
+  //     headerRow.eachCell((cell: any) => {
+  //       cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+  //       cell.fill = {
+  //         type: "pattern",
+  //         pattern: "solid",
+  //         fgColor: { argb: "FF4472C4" },
+  //       };
+  //       cell.alignment = { horizontal: "center", vertical: "middle" };
+  //     });
+
+  //     // Set column widths
+  //     worksheet.getColumn(1).width = 18;
+  //     worksheet.getColumn(2).width = 30;
+  //     worksheet.getColumn(3).width = 45;
+  //     worksheet.getColumn(4).width = 45;
+
+  //     const firstDataRow = data1[0] || [];
+  //     const hasHeaders = isHeaderRow(firstDataRow);
+  //     const headers: string[] = [];
+
+  //     if (hasHeaders) {
+  //       firstDataRow.forEach((cell, idx) => {
+  //         headers[idx] = normalizeHeader(cell) || `Col ${idx}`;
+  //       });
+  //     }
+
+  //     let totalDifferences = 0;
+
+  //     // Process comparison data with LCS algorithm
+  //     for (let rowIndex = 0; rowIndex < comparison.length; rowIndex++) {
+  //       const row = comparison[rowIndex];
+
+  //       let recordNo = "";
+  //       for (let i = 0; i < Math.min(3, row.length); i++) {
+  //         const val = row[i]?.v1 || "";
+  //         if (val) {
+  //           recordNo = val;
+  //           break;
+  //         }
+  //       }
+
+  //       const rowDiffs: Array<{ field: string; v1: string; v2: string }> = [];
+
+  //       row.forEach((cell, colIndex) => {
+  //         if (cell.diff) {
+  //           const fieldName =
+  //             hasHeaders && headers[colIndex]
+  //               ? headers[colIndex]
+  //               : `Col ${colIndex}`;
+
+  //           const v1 = String(cell.v1 || "");
+  //           const v2 = String(cell.v2 || "");
+
+  //           rowDiffs.push({ field: fieldName, v1, v2 });
+  //         }
+  //       });
+
+  //       if (rowDiffs.length > 0) {
+  //         rowDiffs.forEach((diff, idx) => {
+  //           totalDifferences++;
+
+  //           // Compute diff segments using LCS algorithm
+  //           const { segments1, segments2 } = getDiffSegments(diff.v1, diff.v2);
+
+  //           // Add row to worksheet
+  //           const excelRow = worksheet.addRow([
+  //             idx === 0 ? recordNo : "",
+  //             diff.field,
+  //             "", // Entered (will be set as rich text)
+  //             "", // Given (will be set as rich text)
+  //           ]);
+
+  //           // Set rich text for "Entered" column (File 2 - incorrect value)
+  //           const enteredCell = excelRow.getCell(3);
+  //           enteredCell.value = {
+  //             richText: createRichTextFromSegments(segments2, false),
+  //           };
+  //           enteredCell.alignment = { wrapText: true, vertical: "top" };
+
+  //           // Set rich text for "Given" column (File 1 - correct value)
+  //           const givenCell = excelRow.getCell(4);
+  //           givenCell.value = {
+  //             richText: createRichTextFromSegments(segments1, true),
+  //           };
+  //           givenCell.alignment = { wrapText: true, vertical: "top" };
+  //         });
+
+  //         // Add empty row for spacing
+  //         worksheet.addRow(["", "", "", ""]);
+  //       }
+  //     }
+
+  //     // Add summary
+  //     if (totalDifferences === 0) {
+  //       worksheet.addRow(["", "✓ No differences - Files match!", "", ""]);
+  //     } else if (comparisonStats) {
+  //       worksheet.addRow(["", "", "", ""]);
+  //       const summaryRow1 = worksheet.addRow([
+  //         "SUMMARY",
+  //         `Total Cells: ${comparisonStats.totalCells}`,
+  //         `Differences: ${comparisonStats.differences}`,
+  //         `Matches: ${comparisonStats.matches}`,
+  //       ]);
+  //       summaryRow1.font = { bold: true };
+
+  //       const summaryRow2 = worksheet.addRow([
+  //         "",
+  //         `Accuracy: ${comparisonStats.accuracy}%`,
+  //         "",
+  //         "",
+  //       ]);
+  //       summaryRow2.font = { bold: true };
+
+  //       if (
+  //         (matchingMode === "key" || matchingMode === "fuzzy") &&
+  //         (unmatchedFile1Rows.length > 0 || unmatchedFile2Rows.length > 0)
+  //       ) {
+  //         worksheet.addRow([
+  //           "",
+  //           `Unmatched in File1: ${unmatchedFile1Rows.length}`,
+  //           "",
+  //           `Unmatched in File2: ${unmatchedFile2Rows.length}`,
+  //         ]);
+  //       }
+  //     }
+
+  //     // Export file
+  //     const date = new Date().toISOString().slice(0, 10);
+  //     const buffer = await workbook.xlsx.writeBuffer();
+  //     const blob = new Blob([buffer], {
+  //       type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  //     });
+
+  //     const link = document.createElement("a");
+  //     link.href = URL.createObjectURL(blob);
+  //     link.download = `comparison_${date}.xlsx`;
+  //     link.click();
+
+  //     toast({
+  //       title: "Export successful",
+  //       description: `Report saved with ${totalDifferences} character-level differences highlighted (Red=Wrong, Blue=Correct)`,
+  //     });
+  //   } catch (error) {
+  //     console.error(error);
+  //     toast({
+  //       title: "Export failed",
+  //       description: "Could not export results",
+  //       variant: "destructive",
+  //     });
+  //   }
+  // }, [
+  //   comparison,
+  //   data1,
+  //   comparisonStats,
+  //   matchedRows,
+  //   matchingMode,
+  //   unmatchedFile1Rows,
+  //   unmatchedFile2Rows,
+  //   toast,
+  //   getDiffSegments,
+  //   createRichTextFromSegments,
+  // ]);
+  // PRODUCTION-READY EXPORT WITH LCS CHARACTER-LEVEL HIGHLIGHTING + COLOR LEGEND + REPEATED RECORD NUMBERS
+  const exportComparison = useCallback(async () => {
     if (!comparison || !data1) return;
 
     const isHeaderRow = (row: SheetRow): boolean => {
@@ -953,14 +1521,76 @@ const ExcelComparator = () => {
     };
 
     try {
-      type ExportRow = {
-        Record: string;
-        Field: string;
-        Entered: string;
-        Given: string;
-      };
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet("Comparison");
 
-      const exportData: ExportRow[] = [];
+      // ========== ADD COLOR LEGEND AT THE TOP ==========
+      const titleRow = worksheet.addRow(["COLOR CODING LEGEND"]);
+      titleRow.font = { bold: true, size: 14 };
+      titleRow.getCell(1).fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FFE7E6E6" },
+      };
+      worksheet.addRow([""]);
+
+      // RED legend
+      const redLegendRow = worksheet.addRow([
+        "",
+        "RED = Wrong/extra characters in incorrect file",
+      ]);
+      const redCell = redLegendRow.getCell(1);
+      redCell.value = "■";
+      redCell.font = { color: { argb: "FFFF0000" }, size: 16, bold: true };
+      redLegendRow.getCell(2).font = { size: 11 };
+
+      // BLUE legend
+      const blueLegendRow = worksheet.addRow([
+        "",
+        "BLUE = Correct characters (missing in incorrect file)",
+      ]);
+      const blueCell = blueLegendRow.getCell(1);
+      blueCell.value = "■";
+      blueCell.font = { color: { argb: "FF0000FF" }, size: 16, bold: true };
+      blueLegendRow.getCell(2).font = { size: 11 };
+
+      // BLACK legend
+      const blackLegendRow = worksheet.addRow([
+        "",
+        "BLACK = Matching characters",
+      ]);
+      const blackCell = blackLegendRow.getCell(1);
+      blackCell.value = "■";
+      blackCell.font = { color: { argb: "FF000000" }, size: 16, bold: true };
+      blackLegendRow.getCell(2).font = { size: 11 };
+
+      worksheet.addRow([""]);
+      worksheet.addRow([""]);
+
+      // ========== ADD MAIN HEADERS ==========
+      const headerRow = worksheet.addRow([
+        "Record",
+        "Field",
+        "Entered (Incorrect)",
+        "Given (Correct)",
+      ]);
+
+      // Style header row
+      headerRow.eachCell((cell: any) => {
+        cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+        cell.fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: "FF4472C4" },
+        };
+        cell.alignment = { horizontal: "center", vertical: "middle" };
+      });
+
+      // Set column widths
+      worksheet.getColumn(1).width = 18;
+      worksheet.getColumn(2).width = 30;
+      worksheet.getColumn(3).width = 45;
+      worksheet.getColumn(4).width = 45;
 
       const firstDataRow = data1[0] || [];
       const hasHeaders = isHeaderRow(firstDataRow);
@@ -968,24 +1598,15 @@ const ExcelComparator = () => {
 
       if (hasHeaders) {
         firstDataRow.forEach((cell, idx) => {
-          headers[idx] = normalizeHeader(cell) || XLSX.utils.encode_col(idx);
+          headers[idx] = normalizeHeader(cell) || `Col ${idx}`;
         });
       }
 
+      let totalDifferences = 0;
+
+      // Process comparison data with LCS algorithm
       for (let rowIndex = 0; rowIndex < comparison.length; rowIndex++) {
         const row = comparison[rowIndex];
-        const rowDiffs: {
-          field: string;
-          expected: string;
-          actual: string;
-        }[] = [];
-
-        const actualRow1Index = matchedRows
-          ? matchedRows[rowIndex].row1Index
-          : rowIndex;
-        const actualRow2Index = matchedRows
-          ? matchedRows[rowIndex].row2Index
-          : rowIndex;
 
         let recordNo = "";
         for (let i = 0; i < Math.min(3, row.length); i++) {
@@ -996,93 +1617,110 @@ const ExcelComparator = () => {
           }
         }
 
+        const rowDiffs: Array<{ field: string; v1: string; v2: string }> = [];
+
         row.forEach((cell, colIndex) => {
           if (cell.diff) {
             const fieldName =
               hasHeaders && headers[colIndex]
                 ? headers[colIndex]
-                : `Col ${XLSX.utils.encode_col(colIndex)}`;
+                : `Col ${colIndex}`;
 
-            rowDiffs.push({
-              field: fieldName,
-              expected: cell.v1 || "(empty)",
-              actual: cell.v2 || "(empty)",
-            });
+            const v1 = String(cell.v1 || "");
+            const v2 = String(cell.v2 || "");
+
+            rowDiffs.push({ field: fieldName, v1, v2 });
           }
         });
 
         if (rowDiffs.length > 0) {
           rowDiffs.forEach((diff, idx) => {
-            exportData.push({
-              Record: idx === 0 ? recordNo : "",
-              Field: diff.field,
-              Entered: diff.actual,
-              Given: diff.expected,
-            });
+            totalDifferences++;
+
+            // Compute diff segments using LCS algorithm
+            const { segments1, segments2 } = getDiffSegments(diff.v1, diff.v2);
+
+            // Add row to worksheet
+            // CHANGED: Now recordNo repeats for every field (removed idx === 0 condition)
+            const excelRow = worksheet.addRow([
+              recordNo, // ✅ RECORD NUMBER REPEATS FOR EACH FIELD
+              diff.field,
+              "", // Entered (will be set as rich text)
+              "", // Given (will be set as rich text)
+            ]);
+
+            // Set rich text for "Entered" column (File 2 - incorrect value)
+            const enteredCell = excelRow.getCell(3);
+            enteredCell.value = {
+              richText: createRichTextFromSegments(segments2, false),
+            };
+            enteredCell.alignment = { wrapText: true, vertical: "top" };
+
+            // Set rich text for "Given" column (File 1 - correct value)
+            const givenCell = excelRow.getCell(4);
+            givenCell.value = {
+              richText: createRichTextFromSegments(segments1, true),
+            };
+            givenCell.alignment = { wrapText: true, vertical: "top" };
           });
-          exportData.push({
-            Record: "",
-            Field: "",
-            Entered: "",
-            Given: "",
-          });
+
+          // Add empty row for spacing
+          worksheet.addRow(["", "", "", ""]);
         }
       }
 
-      if (exportData.length === 0) {
-        exportData.push({
-          Record: "",
-          Field: "✓ No differences - Files match!",
-          Entered: "",
-          Given: "",
-        });
+      // Add summary
+      if (totalDifferences === 0) {
+        worksheet.addRow(["", "✓ No differences - Files match!", "", ""]);
       } else if (comparisonStats) {
-        exportData.push({
-          Record: "",
-          Field: "",
-          Entered: "",
-          Given: "",
-        });
-        exportData.push({
-          Record: "SUMMARY",
-          Field: `Total: ${comparisonStats.totalCells}`,
-          Entered: `Diffs: ${comparisonStats.differences}`,
-          Given: `Matches: ${comparisonStats.matches}`,
-        });
-        exportData.push({
-          Record: "",
-          Field: `Accuracy: ${comparisonStats.accuracy}%`,
-          Entered: "",
-          Given: "",
-        });
+        worksheet.addRow(["", "", "", ""]);
+        const summaryRow1 = worksheet.addRow([
+          "SUMMARY",
+          `Total Cells: ${comparisonStats.totalCells}`,
+          `Differences: ${comparisonStats.differences}`,
+          `Matches: ${comparisonStats.matches}`,
+        ]);
+        summaryRow1.font = { bold: true };
+
+        const summaryRow2 = worksheet.addRow([
+          "",
+          `Accuracy: ${comparisonStats.accuracy}%`,
+          "",
+          "",
+        ]);
+        summaryRow2.font = { bold: true };
 
         if (
           (matchingMode === "key" || matchingMode === "fuzzy") &&
           (unmatchedFile1Rows.length > 0 || unmatchedFile2Rows.length > 0)
         ) {
-          exportData.push({
-            Record: "",
-            Field: `Unmatched in File1: ${unmatchedFile1Rows.length}`,
-            Entered: "",
-            Given: `Unmatched in File2: ${unmatchedFile2Rows.length}`,
-          });
+          worksheet.addRow([
+            "",
+            `Unmatched in File1: ${unmatchedFile1Rows.length}`,
+            "",
+            `Unmatched in File2: ${unmatchedFile2Rows.length}`,
+          ]);
         }
       }
 
-      const ws = XLSX.utils.json_to_sheet(exportData);
-      ws["!cols"] = [{ wch: 18 }, { wch: 30 }, { wch: 40 }, { wch: 40 }];
-
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "Comparison");
-
+      // Export file
       const date = new Date().toISOString().slice(0, 10);
-      XLSX.writeFile(wb, `comparison_${date}.xlsx`);
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `comparison_${date}.xlsx`;
+      link.click();
 
       toast({
         title: "Export successful",
-        description: `Report saved as comparison_${date}.xlsx`,
+        description: `Report saved with ${totalDifferences} character-level differences highlighted (Red=Wrong, Blue=Correct)`,
       });
     } catch (error) {
+      console.error(error);
       toast({
         title: "Export failed",
         description: "Could not export results",
@@ -1098,6 +1736,8 @@ const ExcelComparator = () => {
     unmatchedFile1Rows,
     unmatchedFile2Rows,
     toast,
+    getDiffSegments,
+    createRichTextFromSegments,
   ]);
 
   const clearAll = () => {
