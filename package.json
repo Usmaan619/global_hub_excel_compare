@@ -60,6 +60,7 @@
     "tailwindcss-animate": "^1.0.7",
     "vaul": "^0.9.9",
     "xlsx": "latest",
+    "xlsx-js-style": "^1.2.0",
     "zod": "3.25.67",
     "zustand": "^5.0.8"
   },

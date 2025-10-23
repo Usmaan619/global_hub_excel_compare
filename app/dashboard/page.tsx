@@ -3,25 +3,40 @@
 import { useEffect, useState } from "react";
 import ExcelComparator from "@/components/excel-comparator";
 import { ThemeToggle } from "@/components/theme-toggle";
+import LogoutDialog from "@/components/logout-dialog";
+import { Button } from "@/components/ui/button";
+import { useRouter } from "next/navigation";
 
 export default function DashboardPage() {
   const [token, setToken] = useState<string | null>(null);
+  const [isDialogOpen, setIsDialogOpen] = useState<boolean>(false);
+  const router = useRouter();
+
+  const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
     const storedToken = localStorage.getItem("auth-storage");
-    if (storedToken) {
-      try {
-        const parsed = JSON.parse(storedToken);
-        const token = parsed?.state?.mockToken;
-        console.log("token: ", token);
-        if (token) {
-          setToken(token);
-        }
-      } catch (e) {
-        console.error("Invalid token storage:", e);
+
+    try {
+      const parsed = storedToken ? JSON.parse(storedToken) : null;
+      const token = parsed?.state?.mockToken;
+
+      if (!token) {
+        // Not logged in → redirect to login
+        router.replace("/login");
+      } else {
+        // Logged in → allow access
+        setLoading(false);
       }
+    } catch (error) {
+      console.error("Error reading token:", error);
+      router.replace("/login");
     }
-  }, []);
+  }, [router]);
+
+  if (loading) {
+    return <div>Loading...</div>;
+  }
 
   return (
     <main className="min-h-dvh bg-background">
@@ -43,9 +58,12 @@ export default function DashboardPage() {
             {/* <Button asChild variant="ghost"> */}
             {/* <Link href="/login">Login</Link> */}
             {/* </Button> */}
-            {/* <Button asChild> */}
-            {/* <Link href="/login">Login</Link> */}
-            {/* </Button> */}
+            <Button asChild>
+              <div className="bg-red-600" onClick={() => setIsDialogOpen(true)}>
+                logout
+              </div>
+            </Button>
+
             <ThemeToggle />
           </div>
         </div>
@@ -64,6 +82,7 @@ export default function DashboardPage() {
 
         <ExcelComparator />
       </section>
+      <LogoutDialog isOpen={isDialogOpen} onOpenChange={setIsDialogOpen} />
     </main>
   );
 }

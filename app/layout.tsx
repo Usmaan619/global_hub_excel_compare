@@ -22,7 +22,7 @@ export const metadata: Metadata = {
     {
       name: "Usman Hasan",
       url: "http://usman-hasan-portfolio.surge.sh/",
-      email: "usmanwasimhasan@gmail.com",
+      // email: "usmanwasimhasan@gmail.com",
     },
   ],
   creator: "Usman Hasan",
@@ -63,7 +63,7 @@ export default function RootLayout({
       className={`${GeistSans.variable} ${GeistMono.variable} antialiased`}
       suppressHydrationWarning
     >
-      <body className="font-sans">
+      <body className="font-mono">
         <Suspense fallback={null}>
           <ThemeProvider
             attribute="class"
