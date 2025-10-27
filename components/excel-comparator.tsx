@@ -716,52 +716,204 @@ const ExcelComparator = () => {
     }
   }, [commonRows, data1, toast]);
 
-  const exportUnmatchedRows = useCallback(() => {
-    if (!data1 || (!unmatchedFile1Rows.length && !unmatchedFile2Rows.length))
-      return;
+  // const exportUnmatchedRows = useCallback(() => {
+  //   if (!data1 || (!unmatchedFile1Rows.length && !unmatchedFile2Rows.length))
+  //     return;
 
-    try {
-      const wb = XLSX.utils.book_new();
+  //   try {
+  //     const wb = XLSX.utils.book_new();
 
-      if (unmatchedFile1Rows.length > 0) {
-        const exportData1: SheetRow[] = [];
-        if (data1.length > 0) {
-          exportData1.push(data1[0]);
-        }
-        unmatchedFile1Rows.forEach((row) => {
-          exportData1.push(row.data);
-        });
-        const ws1 = XLSX.utils.aoa_to_sheet(exportData1);
-        XLSX.utils.book_append_sheet(wb, ws1, "File1 Unmatched");
+  //     if (unmatchedFile1Rows.length > 0) {
+  //       const exportData1: SheetRow[] = [];
+  //       if (data1.length > 0) {
+  //         exportData1.push(data1[0]);
+  //       }
+  //       unmatchedFile1Rows.forEach((row) => {
+  //         exportData1.push(row.data);
+  //       });
+  //       const ws1 = XLSX.utils.aoa_to_sheet(exportData1);
+  //       XLSX.utils.book_append_sheet(wb, ws1, "File1 Unmatched");
+  //     }
+
+  //     if (unmatchedFile2Rows.length > 0 && data2) {
+  //       const exportData2: SheetRow[] = [];
+  //       if (data2.length > 0) {
+  //         exportData2.push(data2[0]);
+  //       }
+  //       unmatchedFile2Rows.forEach((row) => {
+  //         exportData2.push(row.data);
+  //       });
+  //       const ws2 = XLSX.utils.aoa_to_sheet(exportData2);
+  //       XLSX.utils.book_append_sheet(wb, ws2, "File2 Unmatched");
+  //     }
+
+  //     const date = new Date().toISOString().slice(0, 10);
+  //     XLSX.writeFile(wb, `unmatched_rows_${date}.xlsx`);
+
+  //     toast({
+  //       title: "Export successful",
+  //       description: `Unmatched rows exported`,
+  //     });
+  //   } catch (error) {
+  //     toast({
+  //       title: "Export failed",
+  //       description: "Could not export unmatched rows",
+  //       variant: "destructive",
+  //     });
+  //   }
+  // }, [data1, data2, unmatchedFile1Rows, unmatchedFile2Rows, toast]);
+const exportUnmatchedRows = useCallback(() => {
+  if (!data1 || (!unmatchedFile1Rows.length && !unmatchedFile2Rows.length))
+    return;
+
+  try {
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet([]);
+
+    let currentRow = 0;
+
+    // ========== ADD MAIN TITLE ==========
+    XLSX.utils.sheet_add_aoa(
+      ws,
+      [[`Unmatched Rows (Total: ${unmatchedFile1Rows.length + unmatchedFile2Rows.length})`]],
+      { origin: { r: currentRow, c: 0 } }
+    );
+    
+    // Style main title
+    const mainTitleCell = XLSX.utils.encode_cell({ r: currentRow, c: 0 });
+    ws[mainTitleCell].s = {
+      font: { bold: true, size: 16, color: { rgb: "FFFFFF" } },
+      fill: { patternType: "solid", fgColor: { rgb: "2F5496" } },
+      alignment: { horizontal: "center", vertical: "center" }
+    };
+    
+    // Merge main title across all columns (A to E)
+    if (!ws["!merges"]) ws["!merges"] = [];
+    ws["!merges"].push({ s: { r: currentRow, c: 0 }, e: { r: currentRow, c: 4 } });
+    
+    currentRow += 2; // Skip one row
+
+    // ========== ADD SECTION HEADERS ==========
+    XLSX.utils.sheet_add_aoa(
+      ws,
+      [[
+        `Correct File - Unmatched (${unmatchedFile1Rows.length})`,
+        "",
+        "",
+        `Incorrect File - Unmatched (${unmatchedFile2Rows.length})`,
+        ""
+      ]],
+      { origin: { r: currentRow, c: 0 } }
+    );
+
+    // Style Correct File header
+    const correctHeaderCell = XLSX.utils.encode_cell({ r: currentRow, c: 0 });
+    ws[correctHeaderCell].s = {
+      font: { bold: true, size: 12, color: { rgb: "FFFFFF" } },
+      fill: { patternType: "solid", fgColor: { rgb: "4472C4" } },
+      alignment: { horizontal: "center", vertical: "center" }
+    };
+    ws["!merges"].push({ s: { r: currentRow, c: 0 }, e: { r: currentRow, c: 1 } });
+
+    // Style Incorrect File header
+    const incorrectHeaderCell = XLSX.utils.encode_cell({ r: currentRow, c: 3 });
+    ws[incorrectHeaderCell].s = {
+      font: { bold: true, size: 12, color: { rgb: "FFFFFF" } },
+      fill: { patternType: "solid", fgColor: { rgb: "C55A11" } },
+      alignment: { horizontal: "center", vertical: "center" }
+    };
+    ws["!merges"].push({ s: { r: currentRow, c: 3 }, e: { r: currentRow, c: 4 } });
+
+    currentRow++;
+
+    // ========== ADD COLUMN HEADERS ==========
+    XLSX.utils.sheet_add_aoa(
+      ws,
+      [["Row No.", "Correct", "", "Row No.", "Incorrect"]],
+      { origin: { r: currentRow, c: 0 } }
+    );
+
+    // Style column headers
+    ["A", "B", "D", "E"].forEach((col, idx) => {
+      const cellRef = `${col}${currentRow + 1}`;
+      if (ws[cellRef]) {
+        ws[cellRef].s = {
+          font: { bold: true },
+          fill: { 
+            patternType: "solid", 
+            fgColor: { rgb: idx < 2 ? "D9E1F2" : "FCE4D6" } 
+          },
+          alignment: { horizontal: "center", vertical: "center" }
+        };
+      }
+    });
+
+    currentRow++;
+
+    // ========== ADD DATA ROWS ==========
+    const maxRows = Math.max(unmatchedFile1Rows.length, unmatchedFile2Rows.length);
+
+    for (let i = 0; i < maxRows; i++) {
+      const row: SheetRow = [];
+
+      // Correct File data
+      if (i < unmatchedFile1Rows.length) {
+        const correctRow = unmatchedFile1Rows[i];
+        row.push(
+          correctRow.rowIndex,
+          correctRow.keyValue || String(correctRow.data[keyColumn] || correctRow.data[0] || "")
+        );
+      } else {
+        row.push("", "");
       }
 
-      if (unmatchedFile2Rows.length > 0 && data2) {
-        const exportData2: SheetRow[] = [];
-        if (data2.length > 0) {
-          exportData2.push(data2[0]);
-        }
-        unmatchedFile2Rows.forEach((row) => {
-          exportData2.push(row.data);
-        });
-        const ws2 = XLSX.utils.aoa_to_sheet(exportData2);
-        XLSX.utils.book_append_sheet(wb, ws2, "File2 Unmatched");
+      // Empty column separator
+      row.push("");
+
+      // Incorrect File data
+      if (i < unmatchedFile2Rows.length) {
+        const incorrectRow = unmatchedFile2Rows[i];
+        row.push(
+          incorrectRow.rowIndex,
+          incorrectRow.keyValue || String(incorrectRow.data[keyColumn] || incorrectRow.data[0] || "")
+        );
+      } else {
+        row.push("", "");
       }
 
-      const date = new Date().toISOString().slice(0, 10);
-      XLSX.writeFile(wb, `unmatched_rows_${date}.xlsx`);
-
-      toast({
-        title: "Export successful",
-        description: `Unmatched rows exported`,
-      });
-    } catch (error) {
-      toast({
-        title: "Export failed",
-        description: "Could not export unmatched rows",
-        variant: "destructive",
-      });
+      XLSX.utils.sheet_add_aoa(ws, [row], { origin: { r: currentRow, c: 0 } });
+      currentRow++;
     }
-  }, [data1, data2, unmatchedFile1Rows, unmatchedFile2Rows, toast]);
+
+    // ========== SET COLUMN WIDTHS ==========
+    ws["!cols"] = [
+      { wch: 15 },  // Row No. (Correct)
+      { wch: 25 },  // Correct
+      { wch: 5 },   // Separator
+      { wch: 15 },  // Row No. (Incorrect)
+      { wch: 25 }   // Incorrect
+    ];
+
+    // Add worksheet to workbook
+    XLSX.utils.book_append_sheet(wb, ws, "Unmatched Rows");
+
+    // ✅ EXPORT SINGLE FILE WITH MERGED LAYOUT
+    const date = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `unmatched_rows_${date}.xlsx`);
+
+    toast({
+      title: "Export successful",
+      description: `Unmatched rows exported side-by-side (Correct: ${unmatchedFile1Rows.length}, Incorrect: ${unmatchedFile2Rows.length})`,
+    });
+  } catch (error) {
+    console.error(error);
+    toast({
+      title: "Export failed",
+      description: "Could not export unmatched rows",
+      variant: "destructive",
+    });
+  }
+}, [data1, data2, unmatchedFile1Rows, unmatchedFile2Rows, keyColumn, toast]);
 
   const handleFileUpload = useCallback(
     async (file: File | undefined, fileNumber: 1 | 2) => {
@@ -1758,6 +1910,247 @@ const ExcelComparator = () => {
   // ]);
 
   // PRODUCTION-READY EXPORT WITH LCS CHARACTER-LEVEL HIGHLIGHTING + COLOR LEGEND + REPEATED RECORD NUMBERS
+  // const exportComparison = useCallback(async () => {
+  //   if (!comparison || !data1) return;
+
+  //   const isHeaderRow = (row: SheetRow): boolean => {
+  //     if (!row || row.length === 0) return false;
+  //     const nonEmptyCount = row.filter(
+  //       (cell) => typeof cell === "string" && String(cell).trim().length > 0
+  //     ).length;
+  //     const threshold = Math.ceil(row.length * 0.6);
+  //     return nonEmptyCount >= threshold;
+  //   };
+
+  //   const normalizeHeader = (val: CellValue): string => {
+  //     return String(val || "")
+  //       .trim()
+  //       .replace(/\s+/g, " ");
+  //   };
+
+  //   try {
+  //     const workbook = new ExcelJS.Workbook();
+  //     const worksheet = workbook.addWorksheet("Comparison");
+
+  //     // ========== ADD COLOR LEGEND AT THE TOP ==========
+  //     const titleRow = worksheet.addRow(["COLOR CODING LEGEND"]);
+  //     titleRow.font = { bold: true, size: 14 };
+  //     titleRow.getCell(1).fill = {
+  //       type: "pattern",
+  //       pattern: "solid",
+  //       fgColor: { argb: "FFE7E6E6" },
+  //     };
+  //     worksheet.addRow([""]);
+
+  //     // RED legend
+  //     const redLegendRow = worksheet.addRow([
+  //       "",
+  //       "RED = Wrong/extra characters in incorrect file",
+  //     ]);
+  //     const redCell = redLegendRow.getCell(1);
+  //     redCell.value = "■";
+  //     redCell.font = { color: { argb: "FFFF0000" }, size: 16, bold: true };
+  //     redLegendRow.getCell(2).font = { size: 11 };
+
+  //     // BLUE legend
+  //     const blueLegendRow = worksheet.addRow([
+  //       "",
+  //       "BLUE = Correct characters (missing in incorrect file)",
+  //     ]);
+  //     const blueCell = blueLegendRow.getCell(1);
+  //     blueCell.value = "■";
+  //     blueCell.font = { color: { argb: "FF0000FF" }, size: 16, bold: true };
+  //     blueLegendRow.getCell(2).font = { size: 11 };
+
+  //     // BLACK legend
+  //     const blackLegendRow = worksheet.addRow([
+  //       "",
+  //       "BLACK = Matching characters",
+  //     ]);
+  //     const blackCell = blackLegendRow.getCell(1);
+  //     blackCell.value = "■";
+  //     blackCell.font = { color: { argb: "FF000000" }, size: 16, bold: true };
+  //     blackLegendRow.getCell(2).font = { size: 11 };
+
+  //     worksheet.addRow([""]);
+  //     worksheet.addRow([""]);
+
+  //     // ========== ADD MAIN HEADERS ==========
+  //     const headerRow = worksheet.addRow([
+  //       "Record",
+  //       "Field",
+  //       "Entered (Incorrect)",
+  //       "Given (Correct)",
+  //     ]);
+
+  //     // Style header row
+  //     headerRow.eachCell((cell: any) => {
+  //       cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+  //       cell.fill = {
+  //         type: "pattern",
+  //         pattern: "solid",
+  //         fgColor: { argb: "FF4472C4" },
+  //       };
+  //       cell.alignment = { horizontal: "center", vertical: "middle" };
+  //     });
+
+  //     // Set column widths
+  //     worksheet.getColumn(1).width = 18;
+  //     worksheet.getColumn(2).width = 30;
+  //     worksheet.getColumn(3).width = 45;
+  //     worksheet.getColumn(4).width = 45;
+
+  //     const firstDataRow = data1[0] || [];
+  //     const hasHeaders = isHeaderRow(firstDataRow);
+  //     const headers: string[] = [];
+
+  //     if (hasHeaders) {
+  //       firstDataRow.forEach((cell, idx) => {
+  //         headers[idx] = normalizeHeader(cell) || `Col ${idx}`;
+  //       });
+  //     }
+
+  //     let totalDifferences = 0;
+
+  //     // Process comparison data with LCS algorithm
+  //     for (let rowIndex = 0; rowIndex < comparison.length; rowIndex++) {
+  //       const row = comparison[rowIndex];
+
+  //       let recordNo = "";
+  //       for (let i = 0; i < Math.min(3, row.length); i++) {
+  //         const val = row[i]?.v1 || "";
+  //         if (val) {
+  //           recordNo = val;
+  //           break;
+  //         }
+  //       }
+
+  //       const rowDiffs: Array<{ field: string; v1: string; v2: string }> = [];
+
+  //       row.forEach((cell, colIndex) => {
+  //         if (cell.diff) {
+  //           const fieldName =
+  //             hasHeaders && headers[colIndex]
+  //               ? headers[colIndex]
+  //               : `Col ${colIndex}`;
+
+  //           // ✅ USE ORIGINAL VALUES (cell.v1 and cell.v2 already have original display values)
+  //           const v1 = String(cell.v1 || "");
+  //           const v2 = String(cell.v2 || "");
+
+  //           // ✅ ONLY add to diff if strings are actually different
+  //           // (Sometimes normalized values match but display values don't)
+  //           if (v1 !== v2) {
+  //             rowDiffs.push({ field: fieldName, v1, v2 });
+  //           }
+  //         }
+  //       });
+
+  //       if (rowDiffs.length > 0) {
+  //         rowDiffs.forEach((diff) => {
+  //           totalDifferences++;
+
+  //           // Compute diff segments using LCS algorithm on ORIGINAL strings
+  //           const { segments1, segments2 } = getDiffSegments(diff.v1, diff.v2);
+
+  //           // Add row to worksheet
+  //           const excelRow = worksheet.addRow([
+  //             recordNo, // ✅ RECORD NUMBER REPEATS FOR EACH FIELD
+  //             diff.field,
+  //             "", // Entered (will be set as rich text)
+  //             "", // Given (will be set as rich text)
+  //           ]);
+
+  //           // Set rich text for "Entered" column (File 2 - incorrect value)
+  //           const enteredCell = excelRow.getCell(3);
+  //           enteredCell.value = {
+  //             richText: createRichTextFromSegments(segments2, false),
+  //           };
+  //           enteredCell.alignment = { wrapText: true, vertical: "top" };
+
+  //           // Set rich text for "Given" column (File 1 - correct value)
+  //           const givenCell = excelRow.getCell(4);
+  //           givenCell.value = {
+  //             richText: createRichTextFromSegments(segments1, true),
+  //           };
+  //           givenCell.alignment = { wrapText: true, vertical: "top" };
+  //         });
+
+  //         // Add empty row for spacing
+  //         worksheet.addRow(["", "", "", ""]);
+  //       }
+  //     }
+
+  //     // Add summary
+  //     if (totalDifferences === 0) {
+  //       worksheet.addRow(["", "✓ No differences - Files match!", "", ""]);
+  //     } else if (comparisonStats) {
+  //       worksheet.addRow(["", "", "", ""]);
+  //       const summaryRow1 = worksheet.addRow([
+  //         "SUMMARY",
+  //         `Total Cells: ${comparisonStats.totalCells}`,
+  //         `Differences: ${comparisonStats.differences}`,
+  //         `Matches: ${comparisonStats.matches}`,
+  //       ]);
+  //       summaryRow1.font = { bold: true };
+
+  //       const summaryRow2 = worksheet.addRow([
+  //         "",
+  //         `Accuracy: ${comparisonStats.accuracy}%`,
+  //         "",
+  //         "",
+  //       ]);
+  //       summaryRow2.font = { bold: true };
+
+  //       if (
+  //         (matchingMode === "key" || matchingMode === "fuzzy") &&
+  //         (unmatchedFile1Rows.length > 0 || unmatchedFile2Rows.length > 0)
+  //       ) {
+  //         worksheet.addRow([
+  //           "",
+  //           `Unmatched in File1: ${unmatchedFile1Rows.length}`,
+  //           "",
+  //           `Unmatched in File2: ${unmatchedFile2Rows.length}`,
+  //         ]);
+  //       }
+  //     }
+
+  //     // Export file
+  //     const date = new Date().toISOString().slice(0, 10);
+  //     const buffer = await workbook.xlsx.writeBuffer();
+  //     const blob = new Blob([buffer], {
+  //       type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  //     });
+
+  //     const link = document.createElement("a");
+  //     link.href = URL.createObjectURL(blob);
+  //     link.download = `comparison_${date}.xlsx`;
+  //     link.click();
+
+  //     toast({
+  //       title: "Export successful",
+  //       description: `Report saved with ${totalDifferences} character-level differences highlighted (Red=Wrong, Blue=Correct)`,
+  //     });
+  //   } catch (error) {
+  //     console.error(error);
+  //     toast({
+  //       title: "Export failed",
+  //       description: "Could not export results",
+  //       variant: "destructive",
+  //     });
+  //   }
+  // }, [
+  //   comparison,
+  //   data1,
+  //   comparisonStats,
+  //   matchedRows,
+  //   matchingMode,
+  //   unmatchedFile1Rows,
+  //   unmatchedFile2Rows,
+  //   toast,
+  //   getDiffSegments,
+  //   createRichTextFromSegments,
+  // ]);
   const exportComparison = useCallback(async () => {
     if (!comparison || !data1) return;
 
@@ -1782,7 +2175,11 @@ const ExcelComparator = () => {
 
       // ========== ADD COLOR LEGEND AT THE TOP ==========
       const titleRow = worksheet.addRow(["COLOR CODING LEGEND"]);
-      titleRow.font = { bold: true, size: 14 };
+      titleRow.font = {
+        name: "Consolas", // ✅ Monospace font
+        bold: true,
+        size: 14,
+      };
       titleRow.getCell(1).fill = {
         type: "pattern",
         pattern: "solid",
@@ -1797,8 +2194,16 @@ const ExcelComparator = () => {
       ]);
       const redCell = redLegendRow.getCell(1);
       redCell.value = "■";
-      redCell.font = { color: { argb: "FFFF0000" }, size: 16, bold: true };
-      redLegendRow.getCell(2).font = { size: 11 };
+      redCell.font = {
+        name: "Consolas", // ✅ Monospace font
+        color: { argb: "FFFF0000" },
+        size: 16,
+        bold: true,
+      };
+      redLegendRow.getCell(2).font = {
+        name: "Consolas", // ✅ Monospace font
+        size: 11,
+      };
 
       // BLUE legend
       const blueLegendRow = worksheet.addRow([
@@ -1807,8 +2212,16 @@ const ExcelComparator = () => {
       ]);
       const blueCell = blueLegendRow.getCell(1);
       blueCell.value = "■";
-      blueCell.font = { color: { argb: "FF0000FF" }, size: 16, bold: true };
-      blueLegendRow.getCell(2).font = { size: 11 };
+      blueCell.font = {
+        name: "Consolas", // ✅ Monospace font
+        color: { argb: "FF0000FF" },
+        size: 16,
+        bold: true,
+      };
+      blueLegendRow.getCell(2).font = {
+        name: "Consolas", // ✅ Monospace font
+        size: 11,
+      };
 
       // BLACK legend
       const blackLegendRow = worksheet.addRow([
@@ -1817,8 +2230,16 @@ const ExcelComparator = () => {
       ]);
       const blackCell = blackLegendRow.getCell(1);
       blackCell.value = "■";
-      blackCell.font = { color: { argb: "FF000000" }, size: 16, bold: true };
-      blackLegendRow.getCell(2).font = { size: 11 };
+      blackCell.font = {
+        name: "Consolas", // ✅ Monospace font
+        color: { argb: "FF000000" },
+        size: 16,
+        bold: true,
+      };
+      blackLegendRow.getCell(2).font = {
+        name: "Consolas", // ✅ Monospace font
+        size: 11,
+      };
 
       worksheet.addRow([""]);
       worksheet.addRow([""]);
@@ -1833,7 +2254,11 @@ const ExcelComparator = () => {
 
       // Style header row
       headerRow.eachCell((cell: any) => {
-        cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+        cell.font = {
+          name: "Consolas", // ✅ Monospace font
+          bold: true,
+          color: { argb: "FFFFFFFF" },
+        };
         cell.fill = {
           type: "pattern",
           pattern: "solid",
@@ -1882,12 +2307,9 @@ const ExcelComparator = () => {
                 ? headers[colIndex]
                 : `Col ${colIndex}`;
 
-            // ✅ USE ORIGINAL VALUES (cell.v1 and cell.v2 already have original display values)
             const v1 = String(cell.v1 || "");
             const v2 = String(cell.v2 || "");
 
-            // ✅ ONLY add to diff if strings are actually different
-            // (Sometimes normalized values match but display values don't)
             if (v1 !== v2) {
               rowDiffs.push({ field: fieldName, v1, v2 });
             }
@@ -1898,40 +2320,51 @@ const ExcelComparator = () => {
           rowDiffs.forEach((diff) => {
             totalDifferences++;
 
-            // Compute diff segments using LCS algorithm on ORIGINAL strings
             const { segments1, segments2 } = getDiffSegments(diff.v1, diff.v2);
 
-            // Add row to worksheet
-            const excelRow = worksheet.addRow([
-              recordNo, // ✅ RECORD NUMBER REPEATS FOR EACH FIELD
-              diff.field,
-              "", // Entered (will be set as rich text)
-              "", // Given (will be set as rich text)
-            ]);
+            const excelRow = worksheet.addRow([recordNo, diff.field, "", ""]);
 
-            // Set rich text for "Entered" column (File 2 - incorrect value)
+            // Set rich text with Consolas font for "Entered" column
             const enteredCell = excelRow.getCell(3);
-            enteredCell.value = {
-              richText: createRichTextFromSegments(segments2, false),
-            };
+            const enteredRichText = createRichTextFromSegments(
+              segments2,
+              false
+            );
+            // ✅ Add Consolas font to all segments
+            enteredRichText.forEach((segment) => {
+              segment.font = { ...segment.font, name: "Consolas" };
+            });
+            enteredCell.value = { richText: enteredRichText };
             enteredCell.alignment = { wrapText: true, vertical: "top" };
 
-            // Set rich text for "Given" column (File 1 - correct value)
+            // Set rich text with Consolas font for "Given" column
             const givenCell = excelRow.getCell(4);
-            givenCell.value = {
-              richText: createRichTextFromSegments(segments1, true),
-            };
+            const givenRichText = createRichTextFromSegments(segments1, true);
+            // ✅ Add Consolas font to all segments
+            givenRichText.forEach((segment) => {
+              segment.font = { ...segment.font, name: "Consolas" };
+            });
+            givenCell.value = { richText: givenRichText };
             givenCell.alignment = { wrapText: true, vertical: "top" };
+
+            // ✅ Set Consolas font for Record and Field columns
+            excelRow.getCell(1).font = { name: "Consolas" };
+            excelRow.getCell(2).font = { name: "Consolas" };
           });
 
-          // Add empty row for spacing
           worksheet.addRow(["", "", "", ""]);
         }
       }
 
       // Add summary
       if (totalDifferences === 0) {
-        worksheet.addRow(["", "✓ No differences - Files match!", "", ""]);
+        const noErrorRow = worksheet.addRow([
+          "",
+          "✓ No differences - Files match!",
+          "",
+          "",
+        ]);
+        noErrorRow.font = { name: "Consolas", size: 12 };
       } else if (comparisonStats) {
         worksheet.addRow(["", "", "", ""]);
         const summaryRow1 = worksheet.addRow([
@@ -1940,7 +2373,7 @@ const ExcelComparator = () => {
           `Differences: ${comparisonStats.differences}`,
           `Matches: ${comparisonStats.matches}`,
         ]);
-        summaryRow1.font = { bold: true };
+        summaryRow1.font = { name: "Consolas", bold: true };
 
         const summaryRow2 = worksheet.addRow([
           "",
@@ -1948,18 +2381,19 @@ const ExcelComparator = () => {
           "",
           "",
         ]);
-        summaryRow2.font = { bold: true };
+        summaryRow2.font = { name: "Consolas", bold: true };
 
         if (
           (matchingMode === "key" || matchingMode === "fuzzy") &&
           (unmatchedFile1Rows.length > 0 || unmatchedFile2Rows.length > 0)
         ) {
-          worksheet.addRow([
+          const unmatchedRow = worksheet.addRow([
             "",
             `Unmatched in File1: ${unmatchedFile1Rows.length}`,
             "",
             `Unmatched in File2: ${unmatchedFile2Rows.length}`,
           ]);
+          unmatchedRow.font = { name: "Consolas" };
         }
       }
 
